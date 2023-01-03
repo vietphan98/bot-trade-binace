@@ -159,13 +159,32 @@ async function Tick(coin,volcoin){
 async function main(){
     while (true){
             await Tick('BTC',0.001);
+            await delay(180 * 1000)
+
              await Tick('ETH',0.015);
+            await delay(180 * 1000)
+
              await Tick('BNB',0.1);
+            await delay(180 * 1000)
+
              await Tick('LTC',0.3);
+            await delay(180 * 1000)
+
              await Tick('LINK',4);
+            await delay(180 * 1000)
+
              await Tick('AVAX',2);
+            await delay(180 * 1000)
+
              await Tick('ETC',2);
-            await delay(300 * 1000)
+            await delay(180 * 1000)
+
+            await Tick('UNI',5);
+            await delay(180 * 1000)
+
+            await Tick('APE',8);
+            await delay(180 * 1000)
+
     }
     
 }
