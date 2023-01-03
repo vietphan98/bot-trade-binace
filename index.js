@@ -21,7 +21,7 @@ async function printBalance(){
 let order = [];
 
 async function Tick(coin,volcoin){
-    const prices = await binance.fetchOHLCV(`${coin}/USDT`,'5m',undefined,5)
+    const prices = await binance.fetchOHLCV(`${coin}/USDT`,'15m',undefined,5)
      console.log(prices)
     const bPrices = prices.map(price => {
         return{
@@ -35,7 +35,7 @@ async function Tick(coin,volcoin){
     })
 
    
-     let bbData_BTC = await bb(21, 2, "close", "binance", `${coin}/USDT`, "15m", true)
+     let bbData_BTC = await bb(21, 2, "close", "binance", `${coin}/USDT`, "1h", true)
 
 
     let entryLow = (bbData_BTC[bbData_BTC.length - 2].lower).toFixed(1);
@@ -160,9 +160,11 @@ async function main(){
     while (true){
             await Tick('BTC',0.001);
              await Tick('ETH',0.015);
-             await Tick('BNB',0.01);
+             await Tick('BNB',0.1);
              await Tick('LTC',0.3);
              await Tick('LINK',4);
+             await Tick('AVAX',2);
+             await Tick('ETC',2);
             await delay(300 * 1000)
     }
     
