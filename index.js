@@ -1,52 +1,39 @@
 const ccxt = require("ccxt");
-const moment = require("moment");
-const delay = require('delay')
- const bb = require('trading-indicator').bb
+const bb = require('trading-indicator').bb
+const rsiA = require('trading-indicator').rsi
+const ema = require('trading-indicator').ema
+const macd_ = require('trading-indicator').macd
   const binance = new ccxt.binance({
         apiKey : 'LqE8ynLONeG4hCtScdGyVzLWNcjwWxiesizBkyyRDxhHs6BtCHAii6xNYNaBZcI1',
         secret: 'oCxbfd13eUxwDPizE3joefHM7Kn8Ix1kwEqGEisYWjK6aciV7xUkQk5Wv5OT5vDl',
           enableRateLimit: true,
             options: {
                 defaultType: 'future',
+                timeout: 30000,
+
             },
     });
 
 async function printBalance(){
     const balance = await binance.fetchBalance();
     const total = balance.total;
-    
-    console.log(`Tổng giá trị tài sản :${(total.BUSD) + (total.USDT)}\n`)
+    console.log(`Tổng giá trị tài sản :${(total.BUSD)}\n`)
 }
 
 let order = [];
 
 async function Tick(coin,volcoin){
-    const prices = await binance.fetchOHLCV(`${coin}/USDT`,'15m',undefined,5)
-    await delay(20 * 1000)
+    const prices = await binance.fetchOHLCV(`${coin}/USDT`,'1m',undefined,1)
+    let lastPrice = prices[0][4]
 
-     console.log(prices)
-    const bPrices = prices.map(price => {
-        return{
-            timestamp : moment(price[0]).format(),
-            open : price[1],
-            high : price[2],
-            low : price[3],
-            close : price [4],
-            volume : price[5]
-        }
-    })
-
+    let emaData = await ema(99, "close", "binance", `${coin}/USDT`, "15m", true)
+    let macdData = await macd_(12, 26, 9, "close", "binance", `${coin}/USDT`, "15m", true);
+    let rsiData = await rsiA(14, "close", "binance", `${coin}/USDT`, "15m", true)
+    let bbData_BTC = await bb(21, 2, "close", "binance", `${coin}/USDT`, "15m", true)
    
-     let bbData_BTC = await bb(21, 2, "close", "binance", `${coin}/USDT`, "1h", true)
-
-
-    let entryLow = (bbData_BTC[bbData_BTC.length - 2].lower).toFixed(1);
-
-
-    let entryHigh = (bbData_BTC[bbData_BTC.length - 2].upper).toFixed(1);
-
-
-    let lastPrice = (bPrices[bPrices.length -1].close).toFixed(1);
+    let entryLow = (bbData_BTC[bbData_BTC.length - 2].lower);
+    let entryMiD = (bbData_BTC[bbData_BTC.length - 2].middle);
+    let entryHigh = (bbData_BTC[bbData_BTC.length - 2].upper);
 
     let paramsL = {
         'positionSide': 'LONG',
@@ -55,170 +42,173 @@ async function Tick(coin,volcoin){
         'positionSide': 'SHORT',
     }
  
+        console.log(`Gia cuoi cung ${coin} , đang tìm điềm vào lệnh: ${lastPrice}`)
+        let currentPrice = lastPrice;
+        let ema100 = emaData[emaData.length - 1];
+        let upperBB = entryHigh;
+        let lowerBB = entryLow;
+        let rsi = rsiData[rsiData.length - 1];
+        let macd = macdData[macdData.length -1].MACD;
 
-    let stoplossPriceLong =  Number(lastPrice) - Number(lastPrice)*2/100
-
-    let tPPriceLong  =    Number(lastPrice) + Number(lastPrice)/100
-
-    let stoplossPriceShort =   Number(lastPrice) + Number(lastPrice)*2/100
-
-    let tPPriceShort  =   Number(lastPrice) - Number(lastPrice)/100
-
-    let ParamSLLong  = {
-        'positionSide': 'LONG',
-        'stopPrice' : stoplossPriceLong,
-    }
-   
-   
-    let ParamTpLong  = {
-        'positionSide': 'LONG',
-        'stopPrice' : tPPriceLong
-    }
-   
- 
-
-    let ParamSLShort  = {
-        'positionSide': 'SHORT',
-        'stopPrice' : stoplossPriceShort
-    }
-    let ParamTpShort  = {
-        'positionSide': 'SHORT',
-        'stopPrice' : tPPriceShort
-    }
-    
-    
-  
-    console.log(`Gia cuoi cung BTC : ${lastPrice} . | gia cal tren : ${entryHigh} | gia cal duoi : ${entryLow}`)
-
- 
-   
-    if(lastPrice> entryHigh && lastPrice > entryLow ){
-        let checkO = await binance.fetchOpenOrders(`${coin}/BUSD`);
-        await delay(20 * 1000)
-
-        if(checkO.length > 0){
-            for(let j = 0 ; j < checkO.length;j++){
-                await binance.cancelOrder(checkO[j].id,`${coin}/BUSD`)
-                await delay(20 * 1000)
-
-            }
-        }
-       
-    //   let  canceled = await binance.cancelOrders(`${coin}/BUSD`)
-    //   console.log(canceled)
-        order = await binance.createOrder(`${coin}/BUSD`, 'market', 'buy',volcoin,lastPrice,paramsL)
-         await delay(10 * 1000)
-
-            await binance.createOrder(`${coin}/BUSD`,'STOP_MARKET','sell',volcoin,null,ParamSLLong)
-             await delay(10 * 1000)
-
-            await binance.createOrder(`${coin}/BUSD`,'TAKE_PROFIT_MARKET','sell',volcoin,null,ParamTpLong)
-            await delay(10 * 1000)
-
-        console.log(`${moment().format()} : long ở giá ${lastPrice} | stoploss : ${stoplossPriceLong} | tp: ${tPPriceLong} `)
-    }else if(lastPrice < entryHigh && lastPrice > entryLow){
-        let valH = entryHigh - lastPrice ;
-        let valL = lastPrice - entryLow ;
-        if(valH > valL){
-            let checkO = await binance.fetchOpenOrders(`${coin}/BUSD`);
-            await delay(10 * 1000)
-
-            if(checkO.length > 0){
-                for(let j = 0 ; j < checkO.length;j++){
-
-                    await binance.cancelOrder(checkO[j].id,`${coin}/BUSD`)
-                    await delay(10 * 1000)
-
+         //xu hướng tăng 
+         if(currentPrice > ema100 && upperBB > ema100 && lowerBB > ema100){
+            if(rsi < 30 ){
+                if(currentPrice < lowerBB){
+                           let checkO = await binance.fetchOpenOrders(`${coin}/BUSD`);
+                        if(checkO.length <= 1){
+                                for(let j = 0 ; j < checkO.length;j++){
+                                        await binance.cancelOrder(checkO[j].id,`${coin}/BUSD`)
+                                }
+                            order = await binance.createOrder(`${coin}/BUSD`, 'market', 'buy',volcoin,lastPrice,paramsL)
+                            if(lastPrice > (Number(entryLow) - Number(entryLow)*0.2/100)){
+                                await binance.createOrder(`${coin}/BUSD`,'STOP_MARKET','sell',volcoin,null,{
+                                    'positionSide': 'LONG',
+                                    'stopPrice' :  Number(entryLow) - Number(entryLow)*0.2/100,
+                                })
+                            }
+                            if(lastPrice <= entryMiD){
+                                await binance.createOrder(`${coin}/BUSD`,'TAKE_PROFIT_MARKET','sell',volcoin,null,{
+                                    'positionSide': 'LONG',
+                                    'stopPrice' : entryMiD
+                                })
+                            }
+                        }else{
+                            console.log('đã có vị thế long')
+                        }
+                  console.log('Buy');
                 }
             }
-            
-    //         let  canceled = await binance.cancelOrders(`${coin}/BUSD`)
-    //   console.log(canceled)
-         order = await binance.createOrder(`${coin}/BUSD`, 'market', 'buy',volcoin,lastPrice,paramsL)
-         await delay(10 * 1000)
-
-            await binance.createOrder(`${coin}/BUSD`,'STOP_MARKET','sell',volcoin,null,ParamSLLong)
-            await delay(10 * 1000)
-            await binance.createOrder(`${coin}/BUSD`,'TAKE_PROFIT_MARKET','sell',volcoin,null,ParamTpLong)
-            await delay(10 * 1000)
-        console.log(`${moment().format()} : long ở giá ${lastPrice} | stoploss : ${stoplossPriceLong} | tp: ${tPPriceLong} `)
-        }else{
-            let checkO = await binance.fetchOpenOrders(`${coin}/USDT`);
-            await delay(10 * 1000)
-            if(checkO.length > 0){
-
-            for(let j = 0 ; j < checkO.length;j++){
-                await binance.cancelOrder(checkO[j].id,`${coin}/USDT`)
-                await delay(10 * 1000)
+         } else if(currentPrice < ema100 && upperBB <  ema100 && lowerBB < ema100){
+            if(rsi > 70 ){
+                if(currentPrice > upperBB){
+                           let checkO = await binance.fetchOpenOrders(`${coin}/USDT`);
+            if( checkO.length <= 1){
+                for(let j = 0 ; j < checkO.length;j++){
+                            await binance.cancelOrder(checkO[j].id,`${coin}/USDT`)
+                }
+                order = await binance.createOrder(`${coin}/USDT`, 'market', 'sell',volcoin,lastPrice,paramsS)
+                if(lastPrice < (Number(entryHigh) + Number(entryHigh)*0.2/100)){
+                await binance.createOrder(`${coin}/USDT`,'STOP_MARKET','buy',volcoin,null,{
+                    'positionSide': 'SHORT',
+                    'stopPrice' :  (Number(entryHigh) + Number(entryHigh)*0.2/100),
+                })
+                }
+                if(lastPrice >= entryMiD){
+                    await binance.createOrder(`${coin}/USDT`,'TAKE_PROFIT_MARKET','buy',volcoin,null,{
+                        'positionSide': 'SHORT',
+                        'stopPrice' : entryMiD,
+                    })
+                }
+                }else{
+                    console.log('đã có vị thế short')
+                }
+                console.log('Sell');
+                }
             }
-        }
-           order = await binance.createOrder(`${coin}/USDT`, 'market', 'sell',volcoin,lastPrice,paramsS)
-           await delay(10 * 1000)
-            await binance.createOrder(`${coin}/USDT`,'STOP_MARKET','buy',volcoin,null,ParamSLShort)
-            await delay(10 * 1000)
-            await binance.createOrder(`${coin}/USDT`,'TAKE_PROFIT_MARKET','buy',volcoin,null,ParamTpShort)
-            await delay(10 * 1000)
-          
-          console.log(`${moment().format()} : short ở giá ${lastPrice} | stoploss : ${stoplossPriceShort} | tp: ${tPPriceShort} `)
-        }
-    }else{
-        let checkO = await binance.fetchOpenOrders(`${coin}/USDT`);
-        await delay(10 * 1000)
-        if(checkO.length > 0){
-
-        for(let j = 0 ; j < checkO.length;j++){
-            await binance.cancelOrder(checkO[j].id,`${coin}/USDT`)
-            await delay(10 * 1000)
-        }
-    }
-         order = await binance.createOrder(`${coin}/USDT`, 'market', 'sell',volcoin,lastPrice,paramsS)
-         await delay(10 * 1000)
-            await binance.createOrder(`${coin}/USDT`,'STOP_MARKET','buy',volcoin,null,ParamSLShort)
-            await delay(10 * 1000)
-            await binance.createOrder(`${coin}/USDT`,'TAKE_PROFIT_MARKET','buy',volcoin,null,ParamTpShort)
-            await delay(10 * 1000)
-        console.log(`${moment().format()} : short ở giá ${lastPrice} | stoploss : ${stoplossPriceShort} | tp: ${tPPriceShort} `)
-    }
-
-  
+         } else if(currentPrice > ema100 && upperBB > ema100 && lowerBB < ema100){
+            // kiểm tra đường trung bình
+            if(rsi > 50 && rsi < 70){
+                // kiểm tra đường trung bình BB và ema100
+                if(entryMiD > ema100 ){
+                    if(currentPrice > entryMiD){
+                        if(macd > 0){
+                            // kiểm tra giá hiện tại tới high và mid
+                            let valH = entryHigh - currentPrice;
+                            let valL = currentPrice - entryMiD
+                            if(valH > valL){
+                                let checkO = await binance.fetchOpenOrders(`${coin}/BUSD`);
+                                        if(checkO.length <= 1){
+                                                for(let j = 0 ; j < checkO.length;j++){
+                                                        await binance.cancelOrder(checkO[j].id,`${coin}/BUSD`)
+                                                }
+                                            order = await binance.createOrder(`${coin}/BUSD`, 'market', 'buy',volcoin,lastPrice,paramsL)
+                                            if(lastPrice > (Number(entryMiD) - Number(entryMiD)*0.2/100)){
+                                                await binance.createOrder(`${coin}/BUSD`,'STOP_MARKET','sell',volcoin,null,{
+                                                    'positionSide': 'LONG',
+                                                    'stopPrice' : Number(entryMiD) - Number(entryMiD)*0.2/100
+                                                })
+                                            }
+                                            if(lastPrice <= entryHigh){
+                                                await binance.createOrder(`${coin}/BUSD`,'TAKE_PROFIT_MARKET','sell',volcoin,null,{
+                                                    'positionSide': 'LONG',
+                                                    'stopPrice' : entryHigh
+                                                })
+                                            }
+                                        }else{
+                                            console.log('đã có vị thế long')
+                                        }
+                                    console.log('Buy');
+                            }
+                     
+                        }
+                    }
+                }
+            }
+         }else if(currentPrice < ema100 && upperBB > ema100 && lowerBB < ema100){
+             if(rsi < 40 && rsi > 30){
+                if(entryMiD < ema100){
+                    if(currentPrice < entryMiD){
+                        if(macd < 0){
+                            let valH = entryMiD - currentPrice;
+                            let valL = currentPrice - entryLow
+                            if(valH < valL){
+                                let checkO = await binance.fetchOpenOrders(`${coin}/USDT`);
+                                if( checkO.length <= 1){
+                                    for(let j = 0 ; j < checkO.length;j++){
+                                                await binance.cancelOrder(checkO[j].id,`${coin}/USDT`)
+                                    }
+                                    order = await binance.createOrder(`${coin}/USDT`, 'market', 'sell',volcoin,lastPrice,paramsS)
+                                    if(lastPrice < Number(entryMiD) + Number(entryMiD)*0.2/100){
+                                    await binance.createOrder(`${coin}/USDT`,'STOP_MARKET','buy',volcoin,null,{
+                                        'positionSide': 'SHORT',
+                                        'stopPrice' : Number(entryMiD) + Number(entryMiD)*0.2/100,
+                                    })
+                                    }
+                                    if(lastPrice >= entryLow){
+                                        await binance.createOrder(`${coin}/USDT`,'TAKE_PROFIT_MARKET','buy',volcoin,null,{
+                                            'positionSide': 'SHORT',
+                                            'stopPrice' : entryLow,
+                                        })
+                                    }
+                                    }else{
+                                        console.log('đã có vị thế short')
+                                    }
+                                    console.log('Sell');
+                            }
+                                  
+                        }
+                    }
+                }
+             }
+         }
     printBalance()
 }
 
 async function main(){
     while (true){
-            await Tick('BTC',0.001);
-            await delay(60 * 1000)
-
-             await Tick('ETH',0.015);
-            await delay(60 * 1000)
-
-             await Tick('BNB',0.1);
-            await delay(60 * 1000)
-
-             await Tick('LTC',0.3);
-            await delay(60 * 1000)
-
-             await Tick('LINK',4);
-            await delay(60 * 1000)
-
-             await Tick('AVAX',2);
-            await delay(60 * 1000)
-
-             await Tick('ETC',2);
-            await delay(60 * 1000)
-
-            // await Tick('UNI',5);
-            // await delay(120 * 1000)
-
-           
-
+          
+            await Tick('BTC',0.002);
+            await Tick('ETH',0.10);
+            await Tick('BNB',0.2);
+            await Tick('LTC',1);
+            await Tick('LINK',10);
+            await Tick('AVAX',4);
+            await Tick('UNI',10);
+            await Tick('GMT',250);
+            await Tick('APE',15);
+            await Tick('NEAR',35);
+            await Tick('ICP',10);
+            await Tick('CVX',15);
+            await Tick('FIL',15);
+            await Tick('DOT',15);
+            await Tick('APT',15);
+            await Tick('TRX',1000);
+            await Tick('DOGE',750);
+            await Tick('MATIC',60);
+            await Tick('GALA',2500);
+            await Tick('NEAR',30);
+            await Tick('SAND',125);
     }
     
 }
-
-// async function main1(){
-//     const order = await binance.fetchPosition('BTC/USDT',{type: 'future'});
-//     console.log(order)
-// }
-
 main()
